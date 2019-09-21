@@ -1,5 +1,8 @@
 use std::{cmp, fs, path::Path};
 
+pub const CELL_DEAD: u8 = 0;
+pub const CELL_ALIVE: u8 = 1;
+
 enum ParserState {
     BEGIN,
     COMMENT,
@@ -11,14 +14,17 @@ enum ParserState {
 
 #[derive(Debug)]
 pub struct RLEParseEntity {
-    pub width: String,
-    pub height: String,
+    width: String,
+    height: String,
+    pub columns: usize,
+    pub rows: usize,
     run_count: String,
     curr_row: usize,
     curr_col: usize,
     pub grid: Vec<Vec<u8>>,
 }
 
+#[allow(dead_code)]
 pub fn parse_file(file_str: String) -> RLEParseEntity {
     let path = Path::new(&file_str);
     let blob = fs::read_to_string(path).expect("Could not read rle file.");
@@ -27,9 +33,11 @@ pub fn parse_file(file_str: String) -> RLEParseEntity {
 
 pub fn parse(blob: String) -> RLEParseEntity {
     let mut state = ParserState::BEGIN;
-    let mut rle_entity = RLEParseEntity {
+    let mut rpe = RLEParseEntity {
         width: String::from(""),
         height: String::from(""),
+        columns: 0,
+        rows: 0,
         run_count: String::from(""),
         curr_row: 0,
         curr_col: 0,
@@ -42,13 +50,13 @@ pub fn parse(blob: String) -> RLEParseEntity {
         match state {
             ParserState::BEGIN => begin(&mut state, c),
             ParserState::COMMENT => comment(&mut state, c),
-            ParserState::WIDTH => width(&mut state, c, &mut rle_entity),
-            ParserState::HEIGHT => height(&mut state, c, &mut rle_entity),
+            ParserState::WIDTH => width(&mut state, c, &mut rpe),
+            ParserState::HEIGHT => height(&mut state, c, &mut rpe),
             ParserState::RULE => rule(&mut state, c),
-            ParserState::RunCount => run_count(&mut state, c, &mut rle_entity),
+            ParserState::RunCount => run_count(&mut state, c, &mut rpe),
         }
     }
-    rle_entity
+    rpe
 }
 
 fn begin(state: &mut ParserState, c: char) -> () {
@@ -66,20 +74,27 @@ fn comment(state: &mut ParserState, c: char) -> () {
     }
 }
 
-fn width(state: &mut ParserState, c: char, rle_entity: &mut RLEParseEntity) -> () {
+fn width(state: &mut ParserState, c: char, rpe: &mut RLEParseEntity) -> () {
     match c {
-        ',' => *state = ParserState::HEIGHT,
+        ',' => {
+            *state = ParserState::HEIGHT;
+            let columns = rpe
+                .width
+                .parse::<usize>()
+                .expect("Could not convert WIDTH to usize");
+            rpe.columns = columns;
+        }
         '=' => {}
         _ => {
             if !c.is_numeric() {
-                panic!("WIDTH char should be a number, not {}", c)
+                panic!("WIDTH char should be numeric, not {}", c)
             }
-            rle_entity.width.push(c)
+            rpe.width.push(c)
         }
     }
 }
 
-fn height(state: &mut ParserState, c: char, rle_entity: &mut RLEParseEntity) -> () {
+fn height(state: &mut ParserState, c: char, rpe: &mut RLEParseEntity) -> () {
     match c {
         '\n' => *state = ParserState::BEGIN,
         ',' => *state = ParserState::RULE,
@@ -89,21 +104,17 @@ fn height(state: &mut ParserState, c: char, rle_entity: &mut RLEParseEntity) -> 
             if !c.is_numeric() {
                 panic!("HEIGHT char should be a number, not {}", c)
             }
-            rle_entity.height.push(c);
-
-            let rows = rle_entity
+            rpe.height.push(c);
+            let rows = rpe
                 .height
-                .parse::<i32>()
-                .expect("Could not convert HEIGHT to int");
-            let columns = rle_entity
-                .width
-                .parse::<i32>()
-                .expect("Could not convert WIDTH to int");
-            rle_entity.grid = Vec::new();
+                .parse::<usize>()
+                .expect("Could not convert HEIGHT to usize");
+            rpe.rows = rows;
+            rpe.grid = Vec::new();
             for i in 0..rows {
-                rle_entity.grid.push(Vec::with_capacity(columns as usize));
-                for _ in 0..columns {
-                    rle_entity.grid[i as usize].push(0)
+                rpe.grid.push(Vec::with_capacity(rpe.columns));
+                for _ in 0..rpe.columns {
+                    rpe.grid[i].push(0)
                 }
             }
         }
@@ -117,62 +128,48 @@ fn rule(state: &mut ParserState, c: char) -> () {
     }
 }
 
-fn run_count(state: &mut ParserState, c: char, rle_entity: &mut RLEParseEntity) -> () {
+fn run_count(state: &mut ParserState, c: char, rpe: &mut RLEParseEntity) -> () {
     match c {
         '$' => {
-            let width = rle_entity
-                .width
-                .parse::<usize>()
-                .expect("Could not convert WIDTH to int");
-            for i in rle_entity.curr_col..width {
-                rle_entity.grid[rle_entity.curr_row][i] = 0;
+            for i in rpe.curr_col..rpe.columns {
+                rpe.grid[rpe.curr_row][i] = 0;
             }
-            let run_count = match rle_entity.run_count.parse::<usize>() {
-                Ok(num) => num,
-                _ => 1,
-            };
-            rle_entity.curr_row += run_count;
-            rle_entity.curr_col = 0;
-            rle_entity.run_count = String::from("");
+            let run_count = extract_run_count(rpe);
+            rpe.curr_row += run_count;
+            rpe.curr_col = 0;
+            rpe.run_count = String::from("");
             *state = ParserState::RunCount;
         }
         '!' => {}
         'b' => {
-            let width = rle_entity
-                .width
-                .parse::<usize>()
-                .expect("Could not convert WIDTH to int");
-            let run_count = match rle_entity.run_count.parse::<usize>() {
-                Ok(num) => num,
-                _ => 1,
-            };
+            let run_count = extract_run_count(rpe);
             for i in 0..run_count {
-                rle_entity.grid[rle_entity.curr_row][rle_entity.curr_col + i] = 0;
+                rpe.grid[rpe.curr_row][rpe.curr_col + i] = CELL_DEAD;
             }
-            rle_entity.curr_col += cmp::min(run_count, width);
-            rle_entity.run_count = String::from("");
+            rpe.curr_col += cmp::min(run_count, rpe.columns);
+            rpe.run_count = String::from("");
         }
         'o' => {
-            let width = rle_entity
-                .width
-                .parse::<usize>()
-                .expect("Could not convert WIDTH to int");
-            let run_count = match rle_entity.run_count.parse::<usize>() {
-                Ok(num) => num,
-                _ => 1,
-            };
+            let run_count = extract_run_count(rpe);
             for i in 0..run_count {
-                rle_entity.grid[rle_entity.curr_row][rle_entity.curr_col + i] = 1;
+                rpe.grid[rpe.curr_row][rpe.curr_col + i] = CELL_ALIVE;
             }
-            rle_entity.curr_col += cmp::min(run_count, width - 1);
-            rle_entity.run_count = String::from("");
+            rpe.curr_col += cmp::min(run_count, rpe.columns);
+            rpe.run_count = String::from("");
         }
         '\n' => {}
         _ => {
             if !c.is_numeric() {
-                panic!("RUN_COUNT char should be a number, not {}", c)
+                panic!("RUN_COUNT char should be numeric, not {}", c)
             }
-            rle_entity.run_count.push(c)
+            rpe.run_count.push(c)
         }
+    }
+}
+
+fn extract_run_count(rpe: &RLEParseEntity) -> usize {
+    match rpe.run_count.parse::<usize>() {
+        Ok(num) => num,
+        _ => 1,
     }
 }
