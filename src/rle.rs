@@ -9,7 +9,7 @@ enum ParserState {
     WIDTH,
     HEIGHT,
     RULE,
-    RunCount,
+    TAG,
 }
 
 #[derive(Debug)]
@@ -31,6 +31,13 @@ pub fn parse_file(file_str: String) -> RLEParseEntity {
     parse(blob)
 }
 
+/**
+ * Takes in a run-length encoded string and incrementally builds
+ * an RLEParseEntity with the initial state of the pattern.
+ * More info here:
+ * https://en.wikipedia.org/wiki/Run-length_encoding
+ * http://www.conwaylife.com/wiki/Run_Length_Encoded
+ */
 pub fn parse(blob: String) -> RLEParseEntity {
     let mut state = ParserState::BEGIN;
     let mut rpe = RLEParseEntity {
@@ -53,7 +60,7 @@ pub fn parse(blob: String) -> RLEParseEntity {
             ParserState::WIDTH => width(&mut state, c, &mut rpe),
             ParserState::HEIGHT => height(&mut state, c, &mut rpe),
             ParserState::RULE => rule(&mut state, c),
-            ParserState::RunCount => run_count(&mut state, c, &mut rpe),
+            ParserState::TAG => run_count(&mut state, c, &mut rpe),
         }
     }
     rpe
@@ -123,7 +130,7 @@ fn height(state: &mut ParserState, c: char, rpe: &mut RLEParseEntity) -> () {
 
 fn rule(state: &mut ParserState, c: char) -> () {
     match c {
-        '\n' => *state = ParserState::RunCount,
+        '\n' => *state = ParserState::TAG,
         _ => {}
     }
 }
@@ -138,7 +145,7 @@ fn run_count(state: &mut ParserState, c: char, rpe: &mut RLEParseEntity) -> () {
             rpe.curr_row += run_count;
             rpe.curr_col = 0;
             rpe.run_count = String::from("");
-            *state = ParserState::RunCount;
+            *state = ParserState::TAG;
         }
         '!' => {}
         'b' => {
