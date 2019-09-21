@@ -10,7 +10,7 @@ other languages I want to dabble in.
 
 - I wrote an [rle parser](http://www.conwaylife.com/wiki/Run_Length_Encoded) that has, so far, proven to be robust enough to handle any pattern file I've thrown at it; however, it's possible there are bugs that may cause it to crash or render a pattern incorrectly. If you do find one that doesn't work, please file an issue! I'd love to fix it.
 - Many of the patterns on the Game of Life Wiki define a grid size, but have the assumption that evolutions can spread to regions that go beyond the grid size specified. In those cases, patterns will always be drawn correctly on first render; however, it is likely that my implementation will do something different than the example gif.
-  - I plan to resolve this by moving to an SDL2 renderer so I can handle "infite" grid evolutions; This should also allow me to simulate evolutions _much_ faster.
+  - I plan to resolve this by moving to an SDL2 renderer so I can handle "infinite" grid evolutions; This should also allow me to simulate evolutions _much_ faster.
 - The library I'm using to make HTTP requests is **way** too heavy for my needs which causes the build time to be **way** longer than it should be. It's got like 50 dependencies (wtf?). I'm planning on swapping it out for something much more lightweight.
 
 ### Installation
@@ -49,7 +49,7 @@ Example:
 - On the right-hand side of the page under `Pattern Files` click `show`.
 - Find and click on [4812diamond.rle](http://www.conwaylife.com/patterns/4812diamond.rle)
 - Copy the link.
-- Run the command below:
+- Run the program with the link supplied as an argument like below:
 
 ```sh
 $ cargo run http://www.conwaylife.com/patterns/4812diamond.rle
